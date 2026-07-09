@@ -720,6 +720,23 @@ def main() -> int:
         mgr.build_vendor_wordlist()
         return 0
 
+    # ---- Hardware Optimization & GPU detection ----
+    hardware_optimizer_instance = None
+    gpu_info = None
+    if args.hardware_optimize:
+        print("\nHardware optimization...")
+        from engines.hardware_optimizer import HardwareOptimizer
+        hardware_optimizer_instance = HardwareOptimizer(error_handler=None)
+        gpu_info = hardware_optimizer_instance.apply_all(args.interface)
+        print()
+
+    if gpu_info is None:
+        from engines.hardware_optimizer import HardwareOptimizer
+        hardware_optimizer_instance = HardwareOptimizer(error_handler=None)
+        gpu_info = hardware_optimizer_instance.detect_gpu()
+        if gpu_info["available"] and not args.no_gpu:
+            print(f"   GPU acceleration available: {gpu_info['backends']}")
+
     # ---- Benchmark ----
     benchmark_result = None
     if args.benchmark:
@@ -736,23 +753,6 @@ def main() -> int:
                 print(f"   Hashcat: available (GPU detected)")
         if args.list_only:
             return 0
-
-    # ---- Hardware Optimization ----
-    gpu_info = None
-    if args.hardware_optimize:
-        print("\nHardware optimization...")
-        from engines.hardware_optimizer import HardwareOptimizer
-        ho = HardwareOptimizer(error_handler=None)
-        gpu_info = ho.apply_all(args.interface)
-        print()
-
-    # ---- GPU detection (even without --hardware-optimize) ----
-    if gpu_info is None:
-        from engines.hardware_optimizer import HardwareOptimizer
-        ho = HardwareOptimizer(error_handler=None)
-        gpu_info = ho.detect_gpu()
-        if gpu_info["available"] and not args.no_gpu:
-            print(f"   GPU acceleration available: {gpu_info['backends']}")
 
     try:
         from core.bootstrap import SystemBootstrap
@@ -778,14 +778,15 @@ def main() -> int:
         return 1
 
     intel_ctrl = IntelligenceController(bootstrap.config_manager, bootstrap.error_handler)
-    atk_ctrl = RealAttackController(bootstrap.config_manager, bootstrap.error_handler)
+    atk_ctrl = RealAttackController(bootstrap.config_manager, bootstrap.error_handler,
+                                    hardware_optimizer=hardware_optimizer_instance)
 
     if not intel_ctrl.initialize_intelligence_system():
         print("Intelligence system init failed!")
         pm.cleanup()
         return 1
 
-    if not atk_ctrl.initialize_attack_system():
+    if not atk_ctrl.initialize_attack_system(hardware_optimizer=hardware_optimizer_instance):
         print("Attack system init failed!")
         pm.cleanup()
         return 1

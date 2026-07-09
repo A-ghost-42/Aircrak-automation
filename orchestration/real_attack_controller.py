@@ -1,18 +1,21 @@
 # File: orchestration/real_attack_controller.py
 class RealAttackController:
-    def __init__(self, config, error_handler):
+    def __init__(self, config, error_handler, hardware_optimizer=None):
         self.config = config
         self.error_handler = error_handler
+        self.hardware_optimizer = hardware_optimizer
         self.real_attack_engine = None
         self.strategy_manager = None
         
-    def initialize_attack_system(self):
+    def initialize_attack_system(self, hardware_optimizer=None):
         """Initialize real attack system components"""
         try:
             from engines.real_attack_engine import RealAttackEngine
             from engines.attack_strategy import AttackStrategyManager
-            
+
             self.real_attack_engine = RealAttackEngine(self.config, self.error_handler)
+            self.real_attack_engine.initialize_engine(
+                hardware_optimizer=hardware_optimizer or self.hardware_optimizer)
             self.strategy_manager = AttackStrategyManager(self.config, self.error_handler)
             
             if self.real_attack_engine.initialize_engine():
@@ -71,14 +74,16 @@ class RealAttackController:
         print("\n" + "="*60)
         print("📊 REAL ATTACK CYCLE SUMMARY")
         print("="*60)
-        
+
         successful = [r for r in results if r['success']]
         failed = [r for r in results if not r['success']]
         handshakes = [r for r in results if r.get('handshake_captured', False)]
-        
+        pmkids = [r for r in results if r.get('pmkid_captured', False)]
+
         print(f"✅ Successful attacks: {len(successful)}")
         print(f"❌ Failed attacks: {len(failed)}")
-        print(f"📡 Handshakes captured: {len(handshakes)}/{len(results)}")
+        print(f"📡 Handshakes captured: {handshakes}/{len(results)}")
+        print(f"🔑 PMKIDs captured: {pmkids}/{len(results)}")
         print(f"🎯 Total targets attempted: {len(results)}")
         
         if successful:
@@ -96,5 +101,6 @@ class RealAttackController:
             print(f"\n📈 PERFORMANCE STATS:")
             print(f"   • Total passwords tested: {stats['total_tested']:,}")
             print(f"   • Success rate: {stats['success_rate']*100:.1f}%")
-            print(f"   • Handshake capture rate: {stats['handshake_success_rate']*100:.1f}%")
+            print(f"   • Handshake capture rate: {stats['handshake_capture_rate']*100:.1f}%")
+            print(f"   • PMKID capture rate:     {stats['pmkid_capture_rate']*100:.1f}%")
             print(f"   • Average time per attack: {stats['average_time']:.1f}s")
