@@ -90,6 +90,17 @@ def build_parser() -> argparse.ArgumentParser:
     wl.add_argument("--wordlist", "-w", type=str, default=None,
                     help="Path to a wordlist file to try first")
 
+    data = p.add_argument_group("data")
+    data.add_argument("--list-scans", action="store_true",
+                      help="List all cached scan files with summary")
+    data.add_argument("--scan-data", type=str, nargs="?", const="last",
+                      help="Show details of a cached scan (last scan by default, or specify filename)")
+    data.add_argument("--export-scans", type=str, nargs="?", const="json",
+                      choices=["json", "csv"],
+                      help="Export all scan data (json or csv format)")
+    data.add_argument("--known-targets", action="store_true",
+                      help="Show persistent target database from brain")
+
     adv = p.add_argument_group("advanced")
     adv.add_argument("--timeout", type=int, default=3600,
                      help="Per-target timeout in seconds (default: 3600)")
@@ -140,10 +151,27 @@ def save_cracked_db(db: dict[str, str]) -> None:
 def save_scan_cache(targets: list[dict], interface: str, path: str) -> None:
     _ensure_dir(os.path.dirname(path))
     try:
+        enc_breakdown = {}
+        channels = set()
+        signals = []
+        for t in targets:
+            enc = t.get("encryption", "?") or "?"
+            enc_breakdown[enc] = enc_breakdown.get(enc, 0) + 1
+            ch = t.get("channel", t.get("Channel"))
+            if ch is not None:
+                channels.add(int(ch))
+            sig = t.get("signal_strength", t.get("Power"))
+            if isinstance(sig, (int, float)):
+                signals.append(sig)
         payload = {
             "timestamp": datetime.now().isoformat(),
             "interface": interface,
             "target_count": len(targets),
+            "encryption_breakdown": enc_breakdown,
+            "channels": sorted(channels) if channels else [],
+            "avg_signal": round(sum(signals) / len(signals), 1) if signals else 0,
+            "min_signal": min(signals) if signals else 0,
+            "max_signal": max(signals) if signals else 0,
             "targets": targets,
         }
         with open(path, "w") as f:
@@ -306,6 +334,150 @@ class PersistentMonitor:
     def __del__(self) -> None:
         self.cleanup()
 
+
+def _list_cached_scans(scan_dir: str = SCAN_CACHE_DIR) -> None:
+    if not os.path.isdir(scan_dir):
+        print("No scan cache directory found.")
+        return
+    files = sorted(Path(scan_dir).glob("scan_*.json"), reverse=True)
+    if not files:
+        print("No cached scans found.")
+        return
+    print(f"\nCACHED SCANS ({len(files)} total):")
+    print(f"{'#':<3} {'Date':<22} {'Interface':<12} {'Targets':<8} {'Channels':<10} {'Avg Signal':<10} {'Encryption'}")
+    print(f"{'-'*80}")
+    for i, f in enumerate(files, 1):
+        try:
+            data = json.loads(f.read_text())
+            ts = data.get("timestamp", "?")[:19]
+            iface = data.get("interface", "?")
+            count = data.get("target_count", 0)
+            ch = ",".join(str(c) for c in data.get("channels", [])[:5])
+            if len(data.get("channels", [])) > 5:
+                ch += "..."
+            avg = data.get("avg_signal", "?")
+            enc = ", ".join(f"{k}={v}" for k, v in data.get("encryption_breakdown", {}).items())
+            print(f"{i:<3} {ts:<22} {iface:<12} {count:<8} {ch:<10} {avg:<10} {enc[:40]}")
+        except (json.JSONDecodeError, OSError):
+            print(f"{i:<3} {f.name:<50} (corrupt)")
+    print()
+
+def _show_scan_detail(scan_spec: str, scan_dir: str = SCAN_CACHE_DIR) -> None:
+    if not os.path.isdir(scan_dir):
+        print("No scan cache directory found.")
+        return
+    files = sorted(Path(scan_dir).glob("scan_*.json"), reverse=True)
+    if not files:
+        print("No cached scans found.")
+        return
+    if scan_spec == "last":
+        path = files[0]
+    else:
+        try:
+            idx = int(scan_spec) - 1
+            path = files[idx]
+        except (ValueError, IndexError):
+            if os.path.isfile(scan_spec):
+                path = Path(scan_spec)
+            else:
+                print(f"Scan not found: {scan_spec}")
+                return
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        print(f"Cannot read scan file: {path}")
+        return
+    print(f"\nSCAN DATA: {path.name}")
+    print(f"   Timestamp:       {data.get('timestamp', '?')}")
+    print(f"   Interface:       {data.get('interface', '?')}")
+    print(f"   Targets found:   {data.get('target_count', 0)}")
+    print(f"   Channels:        {data.get('channels', [])}")
+    print(f"   Signal range:    {data.get('min_signal', '?')} to {data.get('max_signal', '?')} dBm")
+    print(f"   Avg signal:      {data.get('avg_signal', '?')} dBm")
+    print(f"   Encryption:      {data.get('encryption_breakdown', {})}")
+    print(f"\n   TARGETS:")
+    targets = data.get("targets", [])
+    print(f"   {'SSID':<25} {'BSSID':<18} {'Ch':<4} {'Enc':<8} {'Signal':<8} {'Clients'}")
+    print(f"   {'-'*70}")
+    for t in targets:
+        ssid = (t.get("ssid") or "<hidden>")[:24]
+        bssid = t.get("bssid", "?")
+        ch = t.get("channel", t.get("Channel", "?"))
+        enc = (t.get("encryption") or "?")[:8]
+        sig = t.get("signal_strength", t.get("Power", "?"))
+        cl = t.get("client_count", t.get("clients", t.get("Clients", "?")))
+        print(f"   {ssid:<25} {bssid:<18} {ch:<4} {enc:<8} {sig:<8} {cl}")
+    print()
+
+def _export_scans_data(fmt: str, scan_dir: str = SCAN_CACHE_DIR) -> None:
+    if not os.path.isdir(scan_dir):
+        print("No scan cache directory found.")
+        return
+    files = sorted(Path(scan_dir).glob("scan_*.json"))
+    if not files:
+        print("No cached scans found.")
+        return
+    all_targets = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text())
+            ts = data.get("timestamp", "")
+            for t in data.get("targets", []):
+                entry = {
+                    "scan_timestamp": ts,
+                    "ssid": t.get("ssid", ""),
+                    "bssid": t.get("bssid", ""),
+                    "channel": t.get("channel", t.get("Channel", "")),
+                    "encryption": t.get("encryption", ""),
+                    "signal_strength": t.get("signal_strength", t.get("Power", "")),
+                    "clients": t.get("client_count", t.get("clients", t.get("Clients", ""))),
+                    "wps_status": t.get("wps_status", ""),
+                }
+                all_targets.append(entry)
+        except (json.JSONDecodeError, OSError):
+            continue
+    if not all_targets:
+        print("No targets extracted from scans.")
+        return
+    out_path = f"scan_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{fmt}"
+    if fmt == "json":
+        with open(out_path, "w") as f:
+            json.dump(all_targets, f, indent=2)
+        print(f"Exported {len(all_targets)} target records to {out_path}")
+    elif fmt == "csv":
+        import csv
+        with open(out_path, "w", newline="") as f:
+            if all_targets:
+                w = csv.DictWriter(f, fieldnames=all_targets[0].keys())
+                w.writeheader()
+                w.writerows(all_targets)
+        print(f"Exported {len(all_targets)} target records to {out_path}")
+
+def _show_known_targets(brain) -> None:
+    if not hasattr(brain, "get_known_targets"):
+        print("Brain not available.")
+        return
+    targets = brain.get_known_targets(limit=50)
+    if not targets:
+        print("No known targets in brain database.")
+        return
+    print(f"\nPERSISTENT TARGET DATABASE ({len(targets)} targets):")
+    print(f"   {'SSID':<25} {'BSSID':<18} {'Vendor':<12} {'Seen':<5} {'Best Sig':<9} {'Cracked':<8}")
+    print(f"   {'-'*80}")
+    for t in targets:
+        ssid = (t.get("ssid") or "?")[:24]
+        bssid = t.get("bssid", "?")
+        vendor = (t.get("vendor") or "-")[:11]
+        seen = t.get("seen_count", "?")
+        sig = t.get("best_signal", "?")
+        cracked = "yes" if t.get("is_cracked") else "no"
+        print(f"   {ssid:<25} {bssid:<18} {vendor:<12} {seen:<5} {sig:<9} {cracked:<8}")
+    stats = brain.get_stats()
+    if stats:
+        print(f"\n   Attacks: {stats.get('attacks_total', 0)} total, "
+              f"{stats.get('attacks_success', 0)} successful "
+              f"({stats.get('success_rate', 0)*100:.1f}%)")
+    print()
 
 def format_cap_status(monitor_interface: str) -> None:
     print(f"format cap {monitor_interface}")
@@ -722,6 +894,19 @@ def main() -> int:
         mgr.build_vendor_wordlist()
         return 0
 
+    # ---- Data availability ----
+    if args.list_scans:
+        _list_cached_scans()
+        return 0
+
+    if args.scan_data is not None:
+        _show_scan_detail(args.scan_data)
+        return 0
+
+    if args.export_scans is not None:
+        _export_scans_data(args.export_scans)
+        return 0
+
     # ---- Hardware Optimization & GPU detection ----
     hardware_optimizer_instance = None
     gpu_info = None
@@ -811,6 +996,11 @@ def main() -> int:
 
     if hasattr(brain, 'summarize'):
         brain.summarize()
+
+    if args.known_targets:
+        _show_known_targets(brain)
+        pm.cleanup()
+        return 0
 
     targets: list[dict] = []
     if args.resume:
