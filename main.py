@@ -103,6 +103,10 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Generate HTML report with visual statistics")
     adv.add_argument("--benchmark", action="store_true",
                      help="Benchmark cracking speed before attack")
+    adv.add_argument("--hardware-optimize", action="store_true",
+                     help="Optimize hardware: BO regdomain, TX power boost, MAC spoof, GPU detect")
+    adv.add_argument("--no-gpu", action="store_true",
+                     help="Disable GPU acceleration even if available")
     adv.add_argument("--deauth-count", type=int, default=20,
                      help="Deauth packets per burst (default: 20)")
     adv.add_argument("--handshake-timeout", type=int, default=180,
@@ -723,9 +727,32 @@ def main() -> int:
         bm = Benchmark()
         benchmark_result = bm.run()
         speed = benchmark_result.get("aircrack", {}).get("passwords_per_second", 0)
-        print(f"   Cracking speed: {speed:,.0f} passwords/second")
+        print(f"   Aircrack speed: {speed:,.0f} p/s (CPU)")
+        if gpu_info and gpu_info.get("available") and not args.no_gpu:
+            gh_speed = benchmark_result.get("hashcat", {}).get("passwords_per_second", 0)
+            if gh_speed:
+                print(f"   Hashcat speed:  {gh_speed:,.0f} p/s (GPU)")
+            else:
+                print(f"   Hashcat: available (GPU detected)")
         if args.list_only:
             return 0
+
+    # ---- Hardware Optimization ----
+    gpu_info = None
+    if args.hardware_optimize:
+        print("\nHardware optimization...")
+        from engines.hardware_optimizer import HardwareOptimizer
+        ho = HardwareOptimizer(error_handler=None)
+        gpu_info = ho.apply_all(args.interface)
+        print()
+
+    # ---- GPU detection (even without --hardware-optimize) ----
+    if gpu_info is None:
+        from engines.hardware_optimizer import HardwareOptimizer
+        ho = HardwareOptimizer(error_handler=None)
+        gpu_info = ho.detect_gpu()
+        if gpu_info["available"] and not args.no_gpu:
+            print(f"   GPU acceleration available: {gpu_info['backends']}")
 
     try:
         from core.bootstrap import SystemBootstrap

