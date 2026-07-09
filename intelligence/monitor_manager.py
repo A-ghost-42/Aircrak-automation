@@ -14,7 +14,7 @@ class MonitorModeManager:
         """
         Set up monitor mode on specified interface
         """
-        print(f"📡 Setting up monitor mode on {interface}...")
+        print(f" Setting up monitor mode on {interface}...")
         
         try:
             # Step 1: Kill conflicting processes
@@ -29,7 +29,7 @@ class MonitorModeManager:
             monitor_interface = self._start_monitor_mode(interface)
             
             if monitor_interface:
-                print(f"✅ Monitor mode active on {monitor_interface}")
+                print(f" Monitor mode active on {monitor_interface}")
                 self.monitor_interfaces.append(monitor_interface)
                 return monitor_interface
             else:
@@ -43,7 +43,7 @@ class MonitorModeManager:
     def _kill_conflicting_processes(self):
         """Kill processes that might interfere with monitor mode"""
         try:
-            print("   🔫 Killing conflicting processes...")
+            print("    Killing conflicting processes...")
             
             kill_commands = [
                 ['sudo', 'airmon-ng', 'check', 'kill'],
@@ -60,7 +60,7 @@ class MonitorModeManager:
                 except:
                     pass
                     
-            print("   ✅ Conflicting processes terminated")
+            print("    Conflicting processes terminated")
             
         except Exception as e:
             self.error_handler.handle_error('E004', "Failed to kill conflicting processes", e)
@@ -83,11 +83,11 @@ class MonitorModeManager:
             # Check current mode
             current_mode = self._get_interface_mode(interface)
             if current_mode == 'monitor':
-                print(f"   ✅ {interface} already in monitor mode")
+                print(f"    {interface} already in monitor mode")
                 return interface
             
             # Start monitor mode
-            print(f"   🔄 Starting monitor mode on {interface}...")
+            print(f"    Starting monitor mode on {interface}...")
             cmd = ['sudo', 'airmon-ng', 'start', interface]
             
             process = subprocess.run(
@@ -101,13 +101,13 @@ class MonitorModeManager:
                 # Find the new monitor interface
                 monitor_iface = self._find_monitor_interface(interface)
                 if monitor_iface:
-                    print(f"   ✅ Monitor interface: {monitor_iface}")
+                    print(f"    Monitor interface: {monitor_iface}")
                     return monitor_iface
                 else:
                     # Sometimes airmon-ng uses the same interface name
                     return interface
             else:
-                print(f"   ❌ Airmon-ng failed: {process.stderr}")
+                print(f"    Airmon-ng failed: {process.stderr}")
                 return None
                 
         except subprocess.TimeoutExpired:
@@ -171,7 +171,7 @@ class MonitorModeManager:
     def stop_monitor_mode(self, interface):
         """Stop monitor mode and restore managed mode"""
         try:
-            print(f"🛑 Stopping monitor mode on {interface}...")
+            print(f" Stopping monitor mode on {interface}...")
             
             cmd = ['sudo', 'airmon-ng', 'stop', interface]
             process = subprocess.run(
@@ -182,7 +182,7 @@ class MonitorModeManager:
             )
             
             if process.returncode == 0:
-                print(f"✅ Monitor mode stopped on {interface}")
+                print(f" Monitor mode stopped on {interface}")
                 
                 # Restart network services
                 self._restart_network_services()
@@ -210,7 +210,7 @@ class MonitorModeManager:
             for cmd in restart_commands:
                 subprocess.run(cmd, capture_output=True)
                 
-            print("   ✅ Network services restarted")
+            print("    Network services restarted")
             
         except Exception as e:
             self.error_handler.handle_error('E004', "Failed to restart network services", e)
@@ -275,7 +275,7 @@ class MonitorModeManager:
     def verify_monitor_mode(self, interface):
         """Verify that monitor mode is actually working"""
         try:
-            print(f"   🔍 Verifying monitor mode on {interface}...")
+            print(f"    Verifying monitor mode on {interface}...")
             
             # Test with a quick airodump-ng scan
             test_cmd = [
@@ -298,15 +298,15 @@ class MonitorModeManager:
                     content = f.read()
                 
                 if 'BSSID' in content:
-                    print("   ✅ Monitor mode verification: SUCCESS")
+                    print("    Monitor mode verification: SUCCESS")
                     return True
                 else:
-                    print("   ❌ Monitor mode verification: No networks detected")
+                    print("    Monitor mode verification: No networks detected")
                     return False
             else:
-                print("   ❌ Monitor mode verification: No output file created")
+                print("    Monitor mode verification: No output file created")
                 return False
                 
         except Exception as e:
-            print(f"   ❌ Monitor mode verification failed: {e}")
+            print(f"    Monitor mode verification failed: {e}")
             return False

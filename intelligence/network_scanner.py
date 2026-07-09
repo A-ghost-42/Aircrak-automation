@@ -17,7 +17,7 @@ class NetworkScanner:
         """
         Perform wireless network scan using airodump-ng with better error handling
         """
-        print(f"📡 Scanning for networks on {interface}...")
+        print(f" Scanning for networks on {interface}...")
         
         try:
             # Clean up any previous scan files
@@ -34,8 +34,8 @@ class NetworkScanner:
                 interface
             ]
             
-            print(f"   🎯 Running: {' '.join(cmd)}")
-            print(f"   ⏱️  Scanning for {duration} seconds...")
+            print(f"    Running: {' '.join(cmd)}")
+            print(f"   ⏱  Scanning for {duration} seconds...")
             
             process = subprocess.Popen(
                 cmd,
@@ -48,7 +48,7 @@ class NetworkScanner:
             for i in range(duration):
                 time.sleep(1)
                 if i % 5 == 0:  # Progress update every 5 seconds
-                    print(f"   🔄 Scanning... {i+1}/{duration} seconds")
+                    print(f"    Scanning... {i+1}/{duration} seconds")
             
             # Terminate the process
             process.terminate()
@@ -60,14 +60,14 @@ class NetworkScanner:
             
             # Check if CSV file was created
             if not os.path.exists(csv_file):
-                print(f"   ❌ Scan file not found: {csv_file}")
-                print("   💡 Checking for alternative file names...")
+                print(f"    Scan file not found: {csv_file}")
+                print("    Checking for alternative file names...")
                 
                 # Look for any CSV files in /tmp
                 csv_files = list(Path('/tmp').glob('pegasus_scan*.csv'))
                 if csv_files:
                     csv_file = str(csv_files[0])
-                    print(f"   ✅ Found alternative file: {csv_file}")
+                    print(f"    Found alternative file: {csv_file}")
                 else:
                     self.error_handler.handle_error('E201', f"No scan files created. Check if {interface} is in monitor mode.")
                     return []
@@ -75,7 +75,7 @@ class NetworkScanner:
             # Parse results
             self.scan_results = self._parse_scan_results(csv_file)
             
-            print(f"✅ Found {len(self.scan_results)} networks")
+            print(f" Found {len(self.scan_results)} networks")
             
             # Display quick summary
             if self.scan_results:
@@ -93,11 +93,11 @@ class NetworkScanner:
             for file in Path('/tmp').glob('pegasus_scan*'):
                 try:
                     file.unlink()
-                    print(f"   🧹 Cleaned up: {file}")
+                    print(f"    Cleaned up: {file}")
                 except:
                     pass
         except Exception as e:
-            print(f"   ⚠️  Cleanup warning: {e}")
+            print(f"     Cleanup warning: {e}")
     
     def _parse_scan_results(self, csv_file):
         """
@@ -106,21 +106,21 @@ class NetworkScanner:
         networks = []
         
         try:
-            print(f"   📖 Parsing scan results from: {csv_file}")
+            print(f"    Parsing scan results from: {csv_file}")
             
             # Read the entire file first to understand structure
             with open(csv_file, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             
             if not content.strip():
-                print("   ❌ Empty scan file")
+                print("    Empty scan file")
                 return []
             
             lines = content.split('\n')
-            print(f"   🔍 File has {len(lines)} lines")
+            print(f"    File has {len(lines)} lines")
             
             # Debug: Show file structure
-            print("   📄 File structure analysis:")
+            print("    File structure analysis:")
             for i, line in enumerate(lines[:8]):  # Show first 8 lines
                 if line.strip():
                     print(f"      {i+1}: {line[:100]}{'...' if len(line) > 100 else ''}")
@@ -131,7 +131,7 @@ class NetworkScanner:
                 rows = list(csv_reader)
             
             if not rows:
-                print("   ❌ No rows in CSV file")
+                print("    No rows in CSV file")
                 return []
             
             # Find the start of network data
@@ -139,7 +139,7 @@ class NetworkScanner:
             for i, row in enumerate(rows):
                 if len(row) > 0 and 'BSSID' in row[0]:
                     network_start = i + 1
-                    print(f"   ✅ Found network header at row {i+1}")
+                    print(f"    Found network header at row {i+1}")
                     break
             
             # Parse network entries
@@ -153,7 +153,7 @@ class NetworkScanner:
                 
                 # Check if we've reached the client section
                 if len(row) > 0 and 'Station MAC' in row[0]:
-                    print(f"   🔚 Reached client section at row {i+1}")
+                    print(f"    Reached client section at row {i+1}")
                     break
                 
                 # Parse network data
@@ -162,13 +162,13 @@ class NetworkScanner:
                     networks.append(network)
                     networks_found += 1
             
-            print(f"   ✅ Successfully parsed {networks_found} networks")
+            print(f"    Successfully parsed {networks_found} networks")
                         
         except FileNotFoundError:
             self.error_handler.handle_error('E201', f"Scan file not found: {csv_file}")
         except Exception as e:
             self.error_handler.handle_error('E201', f"Failed to parse scan results: {str(e)}", e)
-            print(f"   🐛 Debug: Exception type: {type(e).__name__}")
+            print(f"    Debug: Exception type: {type(e).__name__}")
             
         return networks
     
@@ -236,13 +236,13 @@ class NetworkScanner:
             
             # Debug output for first few networks
             if len(self.scan_results) < 3:
-                print(f"   📝 Sample network: {ssid} ({bssid}) - {encryption} - {signal} dBm")
+                print(f"    Sample network: {ssid} ({bssid}) - {encryption} - {signal} dBm")
             
             return network
             
         except Exception as e:
-            print(f"   ⚠️  Failed to parse network row: {e}")
-            print(f"   🐛 Row data: {row}")
+            print(f"     Failed to parse network row: {e}")
+            print(f"    Row data: {row}")
             return None
     
     def _parse_encryption(self, encryption_str):
@@ -265,7 +265,7 @@ class NetworkScanner:
         if not self.scan_results:
             return
             
-        print("\n📊 NETWORK SCAN SUMMARY:")
+        print("\n NETWORK SCAN SUMMARY:")
         print("-" * 50)
         
         # Group by encryption
@@ -275,11 +275,11 @@ class NetworkScanner:
             encryption_stats[enc] = encryption_stats.get(enc, 0) + 1
         
         for enc, count in encryption_stats.items():
-            print(f"   🔒 {enc}: {count} networks")
+            print(f"    {enc}: {count} networks")
         
         # Show strongest signals
         strong_networks = sorted(self.scan_results, key=lambda x: x['signal'], reverse=True)[:5]
-        print(f"\n   📶 Top 5 strongest signals:")
+        print(f"\n    Top 5 strongest signals:")
         for network in strong_networks:
             print(f"      • {network['ssid']} ({network['signal']} dBm) - {network['encryption']}")
     

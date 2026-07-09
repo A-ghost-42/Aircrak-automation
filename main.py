@@ -901,12 +901,27 @@ def main() -> int:
                     continue
 
             user_seeds: list[str] = []
+            user_passwords: list[str] = []
             if args.batch and args.seeds:
                 user_seeds = list(args.seeds)
                 print(f"   CLI seeds: {', '.join(user_seeds)}")
             elif not args.batch:
                 si = _safe_input("\nSuggestions (seeds, comma-separated, or Enter to skip): ")
                 user_seeds = _parse_seeds(si)
+
+                for tgt in selected:
+                    ssid = tgt.get("ssid", "") or ""
+                    bssid = tgt.get("bssid", "") or ""
+                    from intelligence.cracking_triage import CrackingTriage
+                    ct = CrackingTriage(None, None)
+                    guesses = ct.build_priority_seeds(tgt)
+                    if guesses:
+                        print(f"\n   Intelligent guesses for {ssid} ({bssid[:8]}...):")
+                        for i, (cat, pw) in enumerate(guesses[:10], 1):
+                            cat_label = {"leaked_db": "leaked", "isp_default": "isp", "vendor_default": "vendor"}.get(cat, cat)
+                            print(f"      {i:>2}. [{cat_label:<12}] {pw}")
+                        si2 = _safe_input("   Add your own passwords (comma-sep) or Enter: ")
+                        user_passwords.extend(_parse_seeds(si2))
 
             mutated: list[str] = []
             if user_seeds:
@@ -928,6 +943,7 @@ def main() -> int:
                     selected, monitor_iface,
                     seeds=mutated if mutated else None,
                     wordlist=args.wordlist,
+                    user_passwords=user_passwords if user_passwords else None,
                 )
             except AttributeError as e:
                 print(f"   Attack controller error: {e}")

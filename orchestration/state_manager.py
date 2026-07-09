@@ -76,7 +76,7 @@ class StateManager:
         }
         if cred not in self.credentials:
             self.credentials.append(cred)
-            print(f"🔑 StateManager: New credential added for {ssid}")
+            print(f" StateManager: New credential added for {ssid}")
             self.save_state()
 
     def save_state(self):
@@ -92,7 +92,7 @@ class StateManager:
             with open(self.state_file, 'w') as f:
                 json.dump(state, f, indent=4)
         except Exception as e:
-            print(f"⚠️ StateManager Error: Failed to save state: {e}")
+            print(f" StateManager Error: Failed to save state: {e}")
 
     def load_state(self):
         """Load state from disk"""
@@ -103,7 +103,7 @@ class StateManager:
                 self.credentials = state.get('credentials', [])
                 # Don't resume active attacks automatically for safety
         except Exception as e:
-            print(f"⚠️ StateManager Error: Failed to load state: {e}")
+            print(f" StateManager Error: Failed to load state: {e}")
 
     def get_summary(self):
         """Get a summary of the current session state"""

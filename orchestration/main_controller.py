@@ -21,7 +21,7 @@ class MainController:
         
     def initialize_system(self):
         """Initialize all sub-controllers"""
-        print("🚀 Pegasus-Nexus: Initializing Global Orchestration...")
+        print(" Pegasus-Nexus: Initializing Global Orchestration...")
         
         success = all([
             self.intelligence.initialize_intelligence_system(),
@@ -30,7 +30,7 @@ class MainController:
         ])
         
         if success:
-            print("✅ All systems operational and linked to StateManager")
+            print(" All systems operational and linked to StateManager")
         return success
 
     def run_full_operation(self, interface='wlan0', mode='real', seeds=None):
@@ -38,14 +38,14 @@ class MainController:
         Execute a full end-to-end operation:
         Intelligence -> Analysis -> Strategy -> Attack -> Recording
         """
-        print(f"\n🌟 STARTING FULL OPERATION (Mode: {mode})")
+        print(f"\n STARTING FULL OPERATION (Mode: {mode})")
         if seeds:
-            print(f"💡 User suggestions provided: {seeds}")
+            print(f" User suggestions provided: {seeds}")
         
         # 1. Intelligence Phase
         targets = self.intelligence.execute_complete_intelligence_cycle(interface)
         if not targets:
-            print("❌ No targets found. Aborting operation.")
+            print(" No targets found. Aborting operation.")
             return
             
         # Record targets in state
@@ -54,7 +54,7 @@ class MainController:
             
         # 2. Filtering Phase (Pick the best targets)
         top_targets = self.intelligence.get_top_targets(targets, count=3)
-        print(f"\n🎯 Selected {len(top_targets)} high-probability targets for engagement")
+        print(f"\n Selected {len(top_targets)} high-probability targets for engagement")
         
         # 3. Engagement Phase
         results = []
@@ -72,8 +72,8 @@ class MainController:
             self.intelligence._cleanup_monitor_environment(self.intelligence.get_monitor_interface())
             
         summary = self.state.get_summary()
-        print(f"\n🏁 OPERATION COMPLETE")
-        print(f"📊 Summary: {summary['total_targets']} targets seen, {summary['compromised']} passwords found.")
+        print(f"\n OPERATION COMPLETE")
+        print(f" Summary: {summary['total_targets']} targets seen, {summary['compromised']} passwords found.")
 
     def _process_results(self, results):
         """Update state with attack results"""

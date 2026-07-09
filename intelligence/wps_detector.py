@@ -35,11 +35,11 @@ class WPSDetector:
                 
         except subprocess.TimeoutExpired:
             # Don't trigger a full system error for a single target timeout
-            print(f"   ⚠️  WPS probe timed out for {target_bssid} - skipping")
+            print(f"     WPS probe timed out for {target_bssid} - skipping")
             return 'timeout'
         except Exception as e:
             # Log as warning, not system-stopping error
-            print(f"   ⚠️  WPS probe failed: {e}")
+            print(f"     WPS probe failed: {e}")
             return 'unknown'
     
     def _parse_wash_output(self, wash_output, target_bssid):
@@ -65,7 +65,7 @@ class WPSDetector:
         """
         Detect WPS status for multiple targets efficiently
         """
-        print("🔍 Performing bulk WPS detection...")
+        print(" Performing bulk WPS detection...")
         
         updated_targets = []
         detected_count = 0
@@ -97,5 +97,5 @@ class WPSDetector:
             
             updated_targets.append(target)
         
-        print(f"✅ WPS detection complete. Identified {detected_count} viable WPS targets.")
+        print(f" WPS detection complete. Identified {detected_count} viable WPS targets.")
         return updated_targets

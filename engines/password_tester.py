@@ -27,7 +27,7 @@ class PasswordTester:
         """
         Test passwords in parallel using multiple processes.
         """
-        print(f"🚀 Parallel Cracking Active: {workers} workers | Batch size: {batch_size}")
+        print(f" Parallel Cracking Active: {workers} workers | Batch size: {batch_size}")
         
         start_time = time.time()
         
@@ -106,7 +106,7 @@ class PasswordTester:
         """
         Test multiple passwords in batches (Synchronous Stream)
         """
-        print(f"🎯 Starting sequential password testing on {target_bssid}...")
+        print(f" Starting sequential password testing on {target_bssid}...")
         start_time = time.time()
         batch_passwords = []
         
@@ -125,7 +125,7 @@ class PasswordTester:
                 
                 elapsed = time.time() - start_time
                 speed = self.tested_count / elapsed if elapsed > 0 else 0
-                print(f"   🔄 Progress: {self.tested_count:,} tests | Speed: {speed:.1f} p/s", end='\r')
+                print(f"    Progress: {self.tested_count:,} tests | Speed: {speed:.1f} p/s", end='\r')
         
         if batch_passwords and not self.found_password:
             self._test_password_batch(target_bssid, batch_passwords)

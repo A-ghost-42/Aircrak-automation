@@ -20,7 +20,7 @@ class StreamingEngine:
             self.password_generator = PasswordGenerator(self.config, self.error_handler)
             self.password_tester = PasswordTester(self.config, self.error_handler)
             
-            print("✅ Streaming engine initialized")
+            print(" Streaming engine initialized")
             return True
             
         except Exception as e:
@@ -31,10 +31,10 @@ class StreamingEngine:
         """
         Execute streaming attack on target
         """
-        print(f"\n🎯 Starting streaming attack on: {target['ssid']}")
-        print(f"   📡 BSSID: {target['bssid']}")
-        print(f"   🛠️  Attack type: {attack_type}")
-        print(f"   ⏱️  Max duration: {max_duration} seconds")
+        print(f"\n Starting streaming attack on: {target['ssid']}")
+        print(f"    BSSID: {target['bssid']}")
+        print(f"     Attack type: {attack_type}")
+        print(f"   ⏱  Max duration: {max_duration} seconds")
         
         start_time = time.time()
         result = {
@@ -63,10 +63,10 @@ class StreamingEngine:
             result['duration'] = time.time() - start_time
             
             if success:
-                print(f"🎉 ATTACK SUCCESSFUL! Password: {result['password']}")
-                print(f"📊 Stats: {result['tested_count']} tests in {result['duration']:.1f}s")
+                print(f" ATTACK SUCCESSFUL! Password: {result['password']}")
+                print(f" Stats: {result['tested_count']} tests in {result['duration']:.1f}s")
             else:
-                print(f"❌ Attack failed after {result['tested_count']} tests")
+                print(f" Attack failed after {result['tested_count']} tests")
             
             self.attack_results.append(result)
             return result
@@ -82,20 +82,20 @@ class StreamingEngine:
         # For now, we'll simulate since we don't have actual handshake files
         # In production, this would use real handshake capture
         
-        print("   🔄 Simulating handshake attack (demo mode)...")
+        print("    Simulating handshake attack (demo mode)...")
         
         # Get smart attack parameters
         lengths = self.password_generator.smart_length_sequence(target)
         charsets = self.password_generator.smart_charset_sequence(target)
         
-        print(f"   📊 Strategy: lengths {lengths}, charsets {charsets}")
+        print(f"    Strategy: lengths {lengths}, charsets {charsets}")
         
         # Try each charset in sequence
         for charset in charsets:
             if self.password_tester.found_password:
                 break
                 
-            print(f"   🔧 Trying charset: {charset}")
+            print(f"    Trying charset: {charset}")
             
             # Generate and test passwords
             password_stream = self.password_generator.generate_passwords_stream(
@@ -115,10 +115,10 @@ class StreamingEngine:
     def _execute_wps_attack(self, target, max_duration):
         """Execute WPS PIN attack"""
         if target.get('wps_status') != 'unlocked':
-            print("   ❌ WPS is locked or not available")
+            print("    WPS is locked or not available")
             return False
         
-        print("   🔄 Starting WPS PIN attack...")
+        print("    Starting WPS PIN attack...")
         
         # Generate and test WPS PINs (8 digits)
         for pin in self._generate_wps_pins():
@@ -132,7 +132,7 @@ class StreamingEngine:
                 
             # Progress reporting
             if int(pin) % 1000 == 0:
-                print(f"   🔄 Testing PIN: {pin}")
+                print(f"    Testing PIN: {pin}")
         
         return False
     
@@ -158,7 +158,7 @@ class StreamingEngine:
         """
         Demo mode password testing (simulates real testing)
         """
-        print("   🎭 DEMO MODE: Simulating password testing")
+        print("    DEMO MODE: Simulating password testing")
         
         # Common passwords to "find" in demo mode
         common_passwords = {
@@ -171,7 +171,7 @@ class StreamingEngine:
         demo_password = common_passwords.get(target['ssid'])
         
         if demo_password:
-            print(f"   🎯 Demo password for {target['ssid']}: {demo_password}")
+            print(f"    Demo password for {target['ssid']}: {demo_password}")
             
             # Simulate testing until we "find" the demo password
             for i, password in enumerate(password_stream):
@@ -185,7 +185,7 @@ class StreamingEngine:
                     
                 # Progress simulation
                 if i % 100 == 0:
-                    print(f"   🔄 Demo testing... {i} attempts")
+                    print(f"    Demo testing... {i} attempts")
         
         return False
     

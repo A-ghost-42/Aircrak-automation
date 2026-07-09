@@ -20,7 +20,7 @@ class PerformanceTracker:
                     return json.load(f)
             return []
         except Exception as e:
-            print(f"⚠️ Failed to load stats: {e}")
+            print(f" Failed to load stats: {e}")
             return []
 
     def record_attack(self, target, result):
@@ -38,7 +38,7 @@ class PerformanceTracker:
         
         self.history.append(entry)
         self._save_history()
-        print(f"📊 Performance recorded for {entry['ssid']}")
+        print(f" Performance recorded for {entry['ssid']}")
 
     def _save_history(self):
         """Save history to disk"""
@@ -46,7 +46,7 @@ class PerformanceTracker:
             with open(self.stats_file, 'w') as f:
                 json.dump(self.history, f, indent=4)
         except Exception as e:
-            print(f"⚠️ Failed to save stats: {e}")
+            print(f" Failed to save stats: {e}")
 
     def get_success_patterns(self):
         """Analyze history to find successful patterns"""

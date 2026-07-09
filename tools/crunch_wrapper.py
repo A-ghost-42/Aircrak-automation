@@ -46,16 +46,16 @@ class CrunchWrapper:
             # Estimate file size and check limits
             estimated_size = self._estimate_file_size(min_length, max_length, charset, pattern)
             if estimated_size > max_size_mb * 1024 * 1024:
-                print(f"⚠️  Estimated size: {estimated_size/(1024*1024):.1f}MB > {max_size_mb}MB limit")
+                print(f"  Estimated size: {estimated_size/(1024*1024):.1f}MB > {max_size_mb}MB limit")
                 return None
             
-            print(f"🔧 Generating wordlist with crunch...")
-            print(f"   📏 Length: {min_length}-{max_length} chars")
-            print(f"   🔤 Charset: {charset[:50]}{'...' if len(charset) > 50 else ''}")
+            print(f" Generating wordlist with crunch...")
+            print(f"    Length: {min_length}-{max_length} chars")
+            print(f"    Charset: {charset[:50]}{'...' if len(charset) > 50 else ''}")
             if pattern:
-                print(f"   🎯 Pattern: {pattern}")
-            print(f"   💾 Output: {output_file}")
-            print(f"   📊 Estimated size: {estimated_size/(1024*1024):.1f}MB")
+                print(f"    Pattern: {pattern}")
+            print(f"    Output: {output_file}")
+            print(f"    Estimated size: {estimated_size/(1024*1024):.1f}MB")
             
             # Execute crunch
             process = subprocess.run(
@@ -71,10 +71,10 @@ class CrunchWrapper:
                     file_size = os.path.getsize(output_file)
                     line_count = self._count_lines(output_file)
                     
-                    print(f"✅ Wordlist generated successfully!")
-                    print(f"   📁 File: {output_file}")
-                    print(f"   📊 Size: {file_size/(1024*1024):.2f}MB")
-                    print(f"   📈 Entries: {line_count:,}")
+                    print(f" Wordlist generated successfully!")
+                    print(f"    File: {output_file}")
+                    print(f"    Size: {file_size/(1024*1024):.2f}MB")
+                    print(f"    Entries: {line_count:,}")
                     
                     return output_file
                 else:
@@ -95,7 +95,7 @@ class CrunchWrapper:
         """
         Generate intelligent wordlist based on target analysis
         """
-        print(f"🧠 Generating SMART wordlist for: {target_profile['ssid']}")
+        print(f" Generating SMART wordlist for: {target_profile['ssid']}")
         
         # Get optimal parameters based on target type
         params = self._get_smart_parameters(target_profile)
@@ -165,9 +165,9 @@ class CrunchWrapper:
             params['max_length'] = 12
             params['charset'] = '0123456789abcdefghijklmnopqrstuvwxyz'
         
-        print(f"   🎯 Smart parameters: {params['description']}")
-        print(f"   📏 Length: {params['min_length']}-{params['max_length']}")
-        print(f"   🔤 Charset size: {len(params['charset'])}")
+        print(f"    Smart parameters: {params['description']}")
+        print(f"    Length: {params['min_length']}-{params['max_length']}")
+        print(f"    Charset size: {len(params['charset'])}")
         
         return params
     

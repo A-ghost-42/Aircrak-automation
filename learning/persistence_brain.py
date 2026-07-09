@@ -445,7 +445,7 @@ class PersistenceBrain:
     def summarize(self):
         s = self.get_stats()
         print(f"\n{'='*50}")
-        print(f"🧠 PERSISTENCE BRAIN SUMMARY")
+        print(f" PERSISTENCE BRAIN SUMMARY")
         print(f"{'='*50}")
         print(f"   Attacks logged:       {s['attacks_total']}")
         print(f"   Success rate:         {s['success_rate']*100:.1f}%")

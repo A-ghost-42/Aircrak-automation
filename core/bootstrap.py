@@ -15,7 +15,7 @@ class SystemBootstrap:
         
     def initialize_system(self):
         """Main system initialization routine"""
-        print("🔧 Initializing Pegasus-Nexus System...")
+        print(" Initializing Pegasus-Nexus System...")
         
         # Initialize configuration first
         if not self._initialize_configuration():
@@ -49,11 +49,11 @@ class SystemBootstrap:
         # Final initialization
         if not self.checks_failed:
             self.system_ready = True
-            print("✅ All system checks passed!")
+            print(" All system checks passed!")
             self._display_system_summary()
             return True
         else:
-            print(f"❌ System initialization failed: {len(self.checks_failed)} checks failed")
+            print(f" System initialization failed: {len(self.checks_failed)} checks failed")
             self._display_failed_checks()
             return False
     
@@ -63,10 +63,10 @@ class SystemBootstrap:
             from core.config import Config
             self.config_manager = Config()
             self.config_manager.load_configuration()
-            print("✅ Configuration system initialized")
+            print(" Configuration system initialized")
             return True
         except Exception as e:
-            print(f"❌ Configuration initialization failed: {e}")
+            print(f" Configuration initialization failed: {e}")
             return False
     
     def _initialize_error_handler(self):
@@ -74,10 +74,10 @@ class SystemBootstrap:
         try:
             from core.error_handler import ErrorHandler
             self.error_handler = ErrorHandler(self.config_manager)
-            print("✅ Error handling system initialized")
+            print(" Error handling system initialized")
             return True
         except Exception as e:
-            print(f"❌ Error handler initialization failed: {e}")
+            print(f" Error handler initialization failed: {e}")
             return False
     
     def _check_operating_system(self):
@@ -87,7 +87,7 @@ class SystemBootstrap:
             self.error_handler.handle_error('E001', f"Unsupported OS: {sys.platform}")
             return False
         
-        print("✅ Operating system: Linux")
+        print(" Operating system: Linux")
         return True
     
     def _check_python_version(self):
@@ -100,7 +100,7 @@ class SystemBootstrap:
                 f"Python {required_version[0]}.{required_version[1]}+ required, found {current_version[0]}.{current_version[1]}")
             return False
         
-        print(f"✅ Python version: {current_version[0]}.{current_version[1]}.{current_version[2]}")
+        print(f" Python version: {current_version[0]}.{current_version[1]}.{current_version[2]}")
         return True
     
     def _check_required_tools(self):
@@ -126,7 +126,7 @@ class SystemBootstrap:
                 if result.returncode not in [0, 1]:  # Some tools return 1 for version info
                     missing_tools.append(tool_name)
                 else:
-                    print(f"✅ Tool available: {tool_name}")
+                    print(f" Tool available: {tool_name}")
                     
             except (FileNotFoundError, subprocess.TimeoutExpired, PermissionError):
                 missing_tools.append(tool_name)
@@ -145,25 +145,25 @@ class SystemBootstrap:
         memory = psutil.virtual_memory()
         min_ram_gb = 2
         if memory.total >= min_ram_gb * 1024**3:
-            checks.append(('RAM', f"{memory.total // 1024**3}GB", "✅"))
+            checks.append(('RAM', f"{memory.total // 1024**3}GB", ""))
         else:
-            checks.append(('RAM', f"{memory.total // 1024**3}GB", "❌"))
+            checks.append(('RAM', f"{memory.total // 1024**3}GB", ""))
         
         # Check CPU cores
         min_cores = 2
         cores = psutil.cpu_count(logical=False)
         if cores >= min_cores:
-            checks.append(('CPU Cores', f"{cores}", "✅"))
+            checks.append(('CPU Cores', f"{cores}", ""))
         else:
-            checks.append(('CPU Cores', f"{cores}", "❌"))
+            checks.append(('CPU Cores', f"{cores}", ""))
         
         # Display hardware info
-        print("🖥️  Hardware Check:")
+        print("  Hardware Check:")
         for component, value, status in checks:
             print(f"   {status} {component}: {value}")
         
         # Overall result
-        if all(status == "✅" for _, _, status in checks):
+        if all(status == "" for _, _, status in checks):
             return True
         else:
             self.error_handler.handle_error('E001', "Hardware requirements not met")
@@ -186,7 +186,7 @@ class SystemBootstrap:
                 self.error_handler.handle_error('E005', f"Permission denied: {path}")
                 return False
         
-        print("✅ File permissions: OK")
+        print(" File permissions: OK")
         return True
     
     def _check_network_capabilities(self):
@@ -198,7 +198,7 @@ class SystemBootstrap:
                 s.settimeout(1)
                 # This just tests socket creation, not actual network access
                 pass
-            print("✅ Network capabilities: OK")
+            print(" Network capabilities: OK")
             return True
         except Exception as e:
             self.error_handler.handle_error('E004', "Network socket creation failed")
@@ -207,18 +207,18 @@ class SystemBootstrap:
     def _display_system_summary(self):
         """Display system initialization summary"""
         print("\n" + "="*50)
-        print("🎉 SYSTEM INITIALIZATION COMPLETE")
+        print(" SYSTEM INITIALIZATION COMPLETE")
         print("="*50)
-        print(f"✅ Checks passed: {len(self.checks_passed)}")
-        print(f"📊 Configuration: Loaded")
-        print(f"🚨 Error handling: Active")
-        print(f"💾 Log directory: {Path.home() / '.pegasus_nexus' / 'logs'}")
+        print(f" Checks passed: {len(self.checks_passed)}")
+        print(f" Configuration: Loaded")
+        print(f" Error handling: Active")
+        print(f" Log directory: {Path.home() / '.pegasus_nexus' / 'logs'}")
         print("="*50)
     
     def _display_failed_checks(self):
         """Display failed checks for debugging"""
         print("\n" + "="*50)
-        print("❌ FAILED SYSTEM CHECKS")
+        print(" FAILED SYSTEM CHECKS")
         print("="*50)
         for check in self.checks_failed:
             print(f"   • {check}")

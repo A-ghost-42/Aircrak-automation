@@ -294,18 +294,18 @@ class HealthGuardian:
         print(f"   Missing optional: {len(optional)}")
 
         if critical:
-            print(f"\n   ❌ CRITICAL MISSING:")
+            print(f"\n    CRITICAL MISSING:")
             for m in critical:
                 print(f"      {m['name']:<20} install: sudo apt-get install {m['pkg']}")
 
         if optional:
-            print(f"\n   ⚠️  OPTIONAL MISSING:")
+            print(f"\n     OPTIONAL MISSING:")
             for m in optional:
                 print(f"      {m['name']:<20} install: sudo apt-get install {m['pkg']}")
 
         healthy = [r for r in results.values() if r["found"]]
         if healthy:
-            print(f"\n   ✅ HEALTHY TOOLS:")
+            print(f"\n    HEALTHY TOOLS:")
             for h in healthy[:10]:
                 ver = (h.get("version") or "?")[:30]
                 print(f"      {h['name']:<20} {ver}")

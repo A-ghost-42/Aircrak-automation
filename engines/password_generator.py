@@ -42,7 +42,7 @@ class PasswordGenerator:
         if isinstance(seed_words, str):
             seed_words = [seed_words]
             
-        print(f"🧬 Generating mutations for {len(seed_words)} seed words...")
+        print(f" Generating mutations for {len(seed_words)} seed words...")
         
         for word in seed_words:
             yield from self._apply_mutations(word)

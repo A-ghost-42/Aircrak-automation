@@ -11,7 +11,7 @@ class TargetAnalyzer:
         """
         Analyze and prioritize networks based on multiple factors
         """
-        print("🎯 Analyzing network targets...")
+        print(" Analyzing network targets...")
         
         analyzed_targets = []
         
@@ -22,7 +22,7 @@ class TargetAnalyzer:
         # Sort by success probability (highest first)
         analyzed_targets.sort(key=lambda x: x['success_probability'], reverse=True)
         
-        print(f"✅ Analysis complete. Top target: {analyzed_targets[0]['ssid'] if analyzed_targets else 'None'}")
+        print(f" Analysis complete. Top target: {analyzed_targets[0]['ssid'] if analyzed_targets else 'None'}")
         return analyzed_targets
     
     def _create_target_profile(self, network):
@@ -206,11 +206,11 @@ class TargetAnalyzer:
     def display_target_summary(self, targets):
         """Display formatted summary of analyzed targets"""
         if not targets:
-            print("❌ No targets to display")
+            print(" No targets to display")
             return
             
         print("\n" + "="*80)
-        print("🎯 ANALYZED TARGET SUMMARY")
+        print(" ANALYZED TARGET SUMMARY")
         print("="*80)
         print(f"{'SSID':<25} {'BSSID':<18} {'Encryption':<10} {'Signal':<8} {'Success %':<10} {'Strategies'}")
         print("-"*80)

@@ -64,7 +64,7 @@ class ErrorHandler:
             try:
                 self._execute_recovery(error_code, error_entry)
             except Exception as e:
-                print(f"   ⚠️  Recovery attempt failed: {e}")
+                print(f"     Recovery attempt failed: {e}")
         
         return error_entry['id']
     
@@ -92,7 +92,7 @@ class ErrorHandler:
                     f.write(f"   Exception: {error_entry['exception']}\n")
                 f.write("\n")
         except Exception as e:
-            print(f"❌ Failed to write error log: {e}")
+            print(f" Failed to write error log: {e}")
     
     def _display_error_console(self, error_entry):
         """Display error in console with colored output"""
@@ -104,9 +104,9 @@ class ErrorHandler:
         reset = '\033[0m'
         
         color = colors.get(error_entry['severity'], '\033[0m')
-        print(f"{color}🚨 ERROR {error_entry['code']}: {error_entry['message']}{reset}")
+        print(f"{color} ERROR {error_entry['code']}: {error_entry['message']}{reset}")
         if error_entry['context']:
-            print(f"   📍 Context: {error_entry['context']}")
+            print(f"    Context: {error_entry['context']}")
     
     def _execute_recovery(self, error_code, error_entry):
         """Execute automatic recovery actions"""
@@ -120,22 +120,22 @@ class ErrorHandler:
         method_name = recovery_map.get(error_code)
         if method_name and hasattr(self, method_name):
             method = getattr(self, method_name)
-            print(f"   🔄 Attempting automatic recovery via {method_name}...")
+            print(f"    Attempting automatic recovery via {method_name}...")
             method(error_entry)
         
     def _recover_memory_error(self, error_entry):
         """Recovery action for memory errors"""
         import gc
         gc.collect()
-        print("   ♻️  Garbage collection executed")
+        print("     Garbage collection executed")
 
     def _recover_hardware_error(self, error_entry):
         """Recovery action for hardware errors"""
-        print("   📡 Tip: Try re-inserting your wireless adapter or checking 'rfkill list'")
+        print("    Tip: Try re-inserting your wireless adapter or checking 'rfkill list'")
 
     def _recover_dependency_error(self, error_entry):
         """Recovery action for dependency errors"""
-        print("   📦 Tip: Run 'sudo apt update && sudo apt install aircrack-ng hashcat crunch'")
+        print("    Tip: Run 'sudo apt update && sudo apt install aircrack-ng hashcat crunch'")
     
     def get_error_summary(self):
         """Get summary of recent errors"""
