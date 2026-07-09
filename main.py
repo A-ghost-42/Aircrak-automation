@@ -87,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Download wordlists (rockyou, common WPA)")
     wl.add_argument("--list-wordlists", action="store_true",
                     help="Show available wordlists and exit")
+    wl.add_argument("--wordlist", "-w", type=str, default=None,
+                    help="Path to a wordlist file to try first")
 
     adv = p.add_argument_group("advanced")
     adv.add_argument("--timeout", type=int, default=3600,
@@ -913,12 +915,19 @@ def main() -> int:
                 print(f"   {len(user_seeds)} seed(s) expanded to {len(mutated)} candidate(s)")
 
             print(f"\nStarting attacks on {len(selected)} target(s) via {monitor_iface}...")
+            if args.wordlist:
+                if os.path.isfile(args.wordlist):
+                    print(f"   Custom wordlist: {args.wordlist}")
+                else:
+                    print(f"   WARNING: wordlist not found: {args.wordlist}")
+
             attack_start = time.time()
 
             try:
                 attack_results = atk_ctrl.execute_real_attack_cycle(
                     selected, monitor_iface,
                     seeds=mutated if mutated else None,
+                    wordlist=args.wordlist,
                 )
             except AttributeError as e:
                 print(f"   Attack controller error: {e}")

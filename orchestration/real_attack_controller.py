@@ -28,7 +28,7 @@ class RealAttackController:
             self.error_handler.handle_error('E006', "Real attack system initialization failed", e)
             return False
     
-    def execute_real_attack_cycle(self, targets, interface='wlan0mon', seeds=None):
+    def execute_real_attack_cycle(self, targets, interface='wlan0mon', seeds=None, wordlist=None):
         """
         Execute real attack cycle with handshake capture
         """
@@ -55,7 +55,9 @@ class RealAttackController:
                 continue
             
             # Execute real attack
-            result = self.real_attack_engine.execute_real_attack(target, interface, seeds=seeds)
+            result = self.real_attack_engine.execute_real_attack(
+                target, interface, seeds=seeds, wordlist=wordlist,
+            )
             
             results.append(result)
             

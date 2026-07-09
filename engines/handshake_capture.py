@@ -233,7 +233,7 @@ class HandshakeCapture:
         try:
             r = subprocess.run(["which", "wpaclean"], capture_output=True, text=True, timeout=3)
             if r.returncode != 0:
-                return None
+                return False
 
             out = f"/tmp/pegasus_wpaclean_{int(time.time())}.cap"
             result = subprocess.run(
@@ -251,7 +251,7 @@ class HandshakeCapture:
                 pass
             return False
         except Exception:
-            return None
+            return False
 
     def _verify_handshake(self, cap_file):
         try:
