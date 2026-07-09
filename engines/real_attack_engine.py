@@ -25,6 +25,9 @@ class RealAttackEngine:
         self.snr_engine = None
         self.multi_interface = None
         self.cracking_triage = None
+        self.brain = None
+        self.health_guardian = None
+        self.scheduler = None
         self.attack_results = []
 
     def initialize_engine(self, hardware_optimizer=None):
@@ -39,10 +42,17 @@ class RealAttackEngine:
             from engines.snr_engine import SnrEngine
             from engines.multi_interface import MultiInterfaceManager
             from intelligence.cracking_triage import CrackingTriage
+            from intelligence.health_guardian import HealthGuardian
+            from learning.persistence_brain import PersistenceBrain
+            from learning.smart_scheduler import SmartScheduler
             from learning.performance_tracker import PerformanceTracker
             from tools.hashcat_wrapper import HashcatWrapper
 
             self.hardware_optimizer = hardware_optimizer
+            self.brain = PersistenceBrain()
+            self.health_guardian = HealthGuardian(self.config, self.error_handler)
+            self.scheduler = SmartScheduler(self.config, self.error_handler,
+                                            persistence_brain=self.brain)
             self.password_generator = PasswordGenerator(self.config, self.error_handler)
             self.password_tester = PasswordTester(self.config, self.error_handler)
             self.handshake_capture = HandshakeCapture(self.config, self.error_handler)
@@ -121,11 +131,13 @@ class RealAttackEngine:
                     result["tested_count"] = tested
                     result["duration"] = time.time() - start_time
                     self.performance_tracker.record_attack(target, result)
+                    self._record_to_brain(target, result, bssid, ssid)
                     self.attack_results.append(result)
                     return result
                 else:
                     result["errors"].append("PMKID capture failed (PMF mode)")
                     self.performance_tracker.record_attack(target, result)
+                    self._record_to_brain(target, result, bssid, ssid)
                     return result
 
             noise_floor = self.snr_engine.get_noise_floor(rc_interface)
@@ -139,6 +151,7 @@ class RealAttackEngine:
                 )
                 print(f"   SNR reject: {result['errors'][-1]}")
                 self.performance_tracker.record_attack(target, result)
+                self._record_to_brain(target, result, bssid, ssid)
                 return result
 
             result["snr_passed"] = True
@@ -174,6 +187,7 @@ class RealAttackEngine:
             if not capture_result:
                 result["errors"].append("Both handshake and PMKID capture failed")
                 self.performance_tracker.record_attack(target, result)
+                self._record_to_brain(target, result, bssid, ssid)
                 return result
 
             cap_type = capture_result["type"]
@@ -212,6 +226,7 @@ class RealAttackEngine:
             else:
                 result["errors"].append(f"Unknown capture type: {cap_type}")
                 self.performance_tracker.record_attack(target, result)
+                self._record_to_brain(target, result, bssid, ssid)
                 return result
 
             result["success"] = found_pw is not None
@@ -225,6 +240,7 @@ class RealAttackEngine:
                 print(f"   Failed after {tested:,} tests")
 
             self.performance_tracker.record_attack(target, result)
+            self._record_to_brain(target, result, bssid, ssid)
             self.attack_results.append(result)
             return result
 
@@ -366,6 +382,57 @@ class RealAttackEngine:
             return False
         except Exception:
             return False
+
+    def _record_to_brain(self, target, result, bssid, ssid):
+        try:
+            self.brain.log_attack(
+                bssid=bssid, ssid=ssid,
+                success=result.get("success", False),
+                password=result.get("password"),
+                method=result.get("method"),
+                duration=result.get("duration"),
+                tested_count=result.get("tested_count"),
+                capture_type="handshake" if result.get("handshake_captured") else (
+                    "pmkid" if result.get("pmkid_captured") else None
+                ),
+                signal=target.get("signal_strength"),
+                snr=target.get("snr"),
+                errors=result.get("errors"),
+            )
+
+            self.brain.update_target_profile(
+                bssid=bssid, ssid=ssid,
+                channel=target.get("channel"),
+                encryption=target.get("encryption"),
+                signal=target.get("signal_strength"),
+                vendor=result.get("isp_match"),
+                oui_prefix=bssid[:8].upper() if len(bssid) >= 8 else "",
+            )
+
+            if result.get("handshake_captured"):
+                self.brain.record_handshake_attempt(bssid, result["handshake_captured"])
+            if result.get("pmkid_captured"):
+                self.brain.record_pmkid_attempt(bssid, result["pmkid_captured"])
+
+            if result.get("success") and result.get("password"):
+                self.brain.mark_cracked(bssid, result["password"])
+                self.brain.record_cracked_password(result["password"])
+
+                ssid_pattern = target.get("ssid_pattern", "unknown")
+                self.brain.record_weight("ssid_pattern", ssid_pattern, True)
+
+                vendor = result.get("isp_match") or "unknown"
+                self.brain.record_weight("vendor_pattern", vendor, True)
+
+                enc = target.get("encryption", "unknown")
+                self.brain.record_weight("encryption_type", enc, True)
+            else:
+                ssid_pattern = target.get("ssid_pattern", "unknown")
+                self.brain.record_weight("ssid_pattern", ssid_pattern, False)
+
+            self.scheduler.record_client_hour(bssid)
+        except Exception:
+            pass
 
     def get_attack_statistics(self):
         total = len(self.attack_results)

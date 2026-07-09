@@ -791,6 +791,25 @@ def main() -> int:
         pm.cleanup()
         return 1
 
+    # ---- Persistent Health & Brain ----
+    brain = atk_ctrl.real_attack_engine.brain
+    health = atk_ctrl.real_attack_engine.health_guardian
+    scheduler = atk_ctrl.real_attack_engine.scheduler
+
+    if hasattr(health, 'health_report'):
+        health_report = health.health_report()
+        if not health_report.get("can_proceed", True):
+            critical_missing = health.get_critical_missing()
+            if critical_missing:
+                print("\n   Critical tools missing. Attempting auto-install...")
+                result = health.auto_install_all_missing()
+                print(f"   Installed: {result['installed']}, Failed: {result['failed']}")
+                if result["failed"] > 0:
+                    print("   Some critical tools could not be installed. Proceeding anyway.")
+
+    if hasattr(brain, 'summarize'):
+        brain.summarize()
+
     targets: list[dict] = []
     if args.resume:
         cached = load_scan_cache(args.resume)
