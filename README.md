@@ -161,6 +161,24 @@ python3 main.py --batch -i wlan0 --html-report
 
 # Resume from cached scan
 python3 main.py --batch -i wlan0 --resume ~/.pegasus_nexus/scans/scan_20250401_120000.json
+
+# List all cached scans with summary
+python3 main.py --list-scans
+
+# Show details of last scan
+python3 main.py --scan-data
+
+# Show details of scan #2
+python3 main.py --scan-data 2
+
+# Export all scan history as CSV
+python3 main.py --export-scans csv
+
+# Export all scan history as JSON
+python3 main.py --export-scans json
+
+# Show persistent target database (brain)
+python3 main.py --known-targets
 ```
 
 ### Interactive Workflow
@@ -207,6 +225,12 @@ advanced:
   --resume FILE             Resume from cached scan file
   --no-wps                  Skip WPS detection phase
   --skip-confirm            Skip attack confirmation prompt
+
+data:
+  --list-scans              List all cached scan files with summary
+  --scan-data [SCAN_DATA]   Show details of a cached scan (last scan by default)
+  --export-scans [{json,csv}]  Export all scan data (json or csv format)
+  --known-targets           Show persistent target database from brain
 ```
 
 ---
